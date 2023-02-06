@@ -24,6 +24,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 
+int trace(int); // 用户可以通过这个定义找到跳板 entry 函数
+
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);

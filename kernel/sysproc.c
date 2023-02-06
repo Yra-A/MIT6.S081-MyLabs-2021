@@ -95,3 +95,13 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 
+sys_trace(void) 
+{
+  int msk;
+  if(argint(0, &msk) < 0)
+    return -1;
+  myproc()->sysc_trace = msk;
+  return 0;
+}

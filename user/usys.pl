@@ -14,7 +14,9 @@ sub entry {
     print " ecall\n";
     print " ret\n";
 }
-	
+
+# 生成每个系统调用从用户态 到 内核态的跳板函数，通过 ecall 从 user mode 切换到 supervisor mode，实现了用户态和内核态的隔离
+
 entry("fork");
 entry("exit");
 entry("wait");
@@ -36,3 +38,5 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
+entry("trace"); # 在这里添加跳板入口
+
