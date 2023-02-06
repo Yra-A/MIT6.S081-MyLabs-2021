@@ -9,6 +9,7 @@
         "user.h": "c",
         "stat.h": "c",
         "syscall.h": "c",
-        "spinlock.h": "c"
+        "spinlock.h": "c",
+        "sysinfo.h": "c"
     }
 }

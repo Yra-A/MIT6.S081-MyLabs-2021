@@ -39,4 +39,5 @@ entry("sbrk");
 entry("sleep");
 entry("uptime");
 entry("trace"); # 在这里添加跳板入口
+entry("sysinfo");
 
