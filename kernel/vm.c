@@ -432,3 +432,23 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void recprint(pagetable_t pagetable, int cnt) {
+  for (int i = 0; i < 512; i++) { // 遍历页表
+    pte_t pte = pagetable[i]; // 取出 PTE
+    if (pte & PTE_V) { // 如果是合法的，则需要打印，先打印 层数 - 1 个 ".. "，带有空格！而最后一个没有空格。
+      for (int j = 0; j < cnt - 1; j++) {
+        printf(".. ");
+      }
+      printf("..%d: pte %p pa %p\n", i, pte, PTE2PA (pte)); // 打印最后的 .. 和相关的信息，调用了 riscv.h 中的 PTE2A 函数
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0) { // 如果不是叶子，则需要继续递归打印下去，只有叶子才有这些标志位
+        recprint((pagetable_t)PTE2PA(pte), cnt + 1);
+      }
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable) {
+  printf("page table %p\n", pagetable);
+  recprint(pagetable, 1);
+}
