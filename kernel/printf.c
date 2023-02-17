@@ -132,3 +132,15 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void backtrace(void) {
+  uint64 fp = r_fp(); // 系统提供的，获取了当前执行函数的 fp 
+  uint64 top = PGROUNDUP(fp); // 系统提供的
+  uint64 bottom = PGROUNDDOWN(fp);
+  printf("backtrace:\n");
+  while (fp > bottom && fp < top) {
+    uint64 ra = *(uint64 *)(fp - 8); // 转化成指针再解引用
+    fp = *(uint64 *)(fp - 16);
+    printf("%p\n", ra);
+  }
+}
