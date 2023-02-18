@@ -65,6 +65,11 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if ((r_scause() == 15) && checkcow(r_stval())) {
+    if (cow_fault(r_stval()) != 0) {
+      panic("usertrap: cow_fault");
+      p->killed = 1;
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -218,3 +223,34 @@ devintr()
   }
 }
 
+int checkcow(uint64 va) {
+  pte_t *pte;
+  struct proc *p = myproc();
+  if (va >= MAXVA) return 0; // 虚拟地址是否在合法范围内
+  if ((pte = walk(p->pagetable, va, 0)) == 0) return 0; // 是否能找到对应的 PTE
+  if (!(*pte & PTE_V) || !(*pte & PTE_COW)) return 0; // PTE_V 有效位是否被设置，PTE_COW 是否被设置
+  return 1;
+}
+
+int cow_fault(uint64 va) {
+  va = PGROUNDDOWN(va); // 要 page-aligned
+  pte_t *pte;
+  struct proc *p = myproc();
+  if ((pte = walk(p->pagetable, va, 0)) == 0) { // 获取 PTE
+    panic("cow_fault: walk");
+  }
+  uint64 old = PTE2PA(*pte); // 获取 PTE 对应的物理地址
+  uint64 new;
+  uint64 flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW; // 取消 PTE_COW 位，设置 PTE_W 位
+  if ((new = (uint64)kalloc()) == 0) { // 分配新的物理内存
+    panic("cow_fault: kalloc panic");
+  }
+  memmove((void *)new, (void *)old, PGSIZE); // 实际拷贝操作
+  uvmunmap(p->pagetable, va, 1, 1); // 取消 PTE 与原来的物理内存的映射
+  if (mappages(p->pagetable, va, PGSIZE, new, flags) != 0) { // 与 new 建立新的映射，并设置了新的标志位
+    panic("cow_fault: mappages");
+    kfree((void *)new);
+    return -1;
+  }
+  return 0;
+}

@@ -23,10 +23,14 @@ struct {
   struct run *freelist;
 } kmem;
 
+// struct spinlock reflock;
+int ref_cnt[(PHYSTOP - KERNBASE) / PGSIZE];
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  // initlock(&reflock, "pgref"); 
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -50,6 +54,11 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  if (ref_cnt[pageid(pa)] > 1) { // 引用计数减 1
+    ref_cnt[pageid(pa)]--;
+    return;
+  }
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -76,7 +85,9 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r) {
+    ref_cnt[pageid(r)] = 1; // 初始化引用计数为 1 
     memset((char*)r, 5, PGSIZE); // fill with junk
+  }
   return (void*)r;
 }
