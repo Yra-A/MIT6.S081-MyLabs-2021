@@ -13,10 +13,11 @@ struct entry {
   int value;
   struct entry *next;
 };
-struct entry *table[NBUCKET];
+struct entry *table[NBUCKET]; // hash table
 int keys[NKEYS];
 int nthread = 1;
 
+pthread_mutex_t lock; // declare a lock
 
 double
 now()
@@ -47,6 +48,7 @@ void put(int key, int value)
     if (e->key == key)
       break;
   }
+  pthread_mutex_lock(&lock);
   if(e){
     // update the existing key.
     e->value = value;
@@ -54,7 +56,7 @@ void put(int key, int value)
     // the new is new.
     insert(key, value, &table[i], table[i]);
   }
-
+  pthread_mutex_unlock(&lock);
 }
 
 static struct entry*
@@ -72,7 +74,7 @@ get(int key)
 }
 
 static void *
-put_thread(void *xa)
+put_thread(void *xa) // xa 是线程号
 {
   int n = (int) (long) xa; // thread number
   int b = NKEYS/nthread;
@@ -105,6 +107,7 @@ main(int argc, char *argv[])
   void *value;
   double t1, t0;
 
+  pthread_mutex_init(&lock, NULL); // initialize the lock
 
   if (argc < 2) {
     fprintf(stderr, "Usage: %s nthreads\n", argv[0]);
@@ -136,14 +139,14 @@ main(int argc, char *argv[])
   //
   // now the gets
   //
-  t0 = now();
-  for(int i = 0; i < nthread; i++) {
+  t0 = now(); // 获取现在时间
+  for(int i = 0; i < nthread; i++) { // 创建线程
     assert(pthread_create(&tha[i], NULL, get_thread, (void *) (long) i) == 0);
   }
   for(int i = 0; i < nthread; i++) {
-    assert(pthread_join(tha[i], &value) == 0);
+    assert(pthread_join(tha[i], &value) == 0); // 等待每个线程结束，并把退出状态赋值给 value
   }
-  t1 = now();
+  t1 = now(); // 再次获取时间
 
   printf("%d gets, %.3f seconds, %.0f gets/second\n",
          NKEYS*nthread, t1 - t0, (NKEYS*nthread) / (t1 - t0));

@@ -453,7 +453,7 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
-        swtch(&c->context, &p->context);
+        swtch(&c->context, &p->context); // 把调度器的上下文放回 c->context 中保存，将当前进程的上下文放到 cpu 的寄存器中
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
@@ -487,7 +487,7 @@ sched(void)
     panic("sched interruptible");
 
   intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
+  swtch(&p->context, &mycpu()->context); // 将进程的上下文存到当前进程的 context 里面，将调度器上下文放进 cpu 的寄存器里开始运行
   mycpu()->intena = intena;
 }
 

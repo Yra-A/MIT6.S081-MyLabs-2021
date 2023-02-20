@@ -7,6 +7,7 @@
 
 .globl swtch
 swtch:
+# a0 是第一个参数 old，将当前 cpu 的寄存器存到旧线程的 context 里
         sd ra, 0(a0)
         sd sp, 8(a0)
         sd s0, 16(a0)
@@ -22,7 +23,8 @@ swtch:
         sd s10, 96(a0)
         sd s11, 104(a0)
 
-        ld ra, 0(a1)
+# a1 是第二个参数 new，将新线程 context 里面的值，存到当前 cpu 的寄存器里，此时这个进程掌握了 cpu 的控制权
+        ld ra, 0(a1) 
         ld sp, 8(a1)
         ld s0, 16(a1)
         ld s1, 24(a1)
