@@ -377,7 +377,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
 
-    if (checkcow(va0)) {
+    if (checkcow(va0)) { // copy-on-write
       if (cow_fault(va0) != 0) {
         return -1;
       }
