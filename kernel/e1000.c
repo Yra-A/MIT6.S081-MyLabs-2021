@@ -103,6 +103,28 @@ e1000_transmit(struct mbuf *m)
   // a pointer so that it can be freed after sending.
   //
   
+  acquire(&e1000_lock); // 获取锁，防止 race
+  uint32 tx_idx = regs[E1000_TDT]; // 获取下一个缓冲区下表
+  if ((tx_ring[tx_idx].status & E1000_TXD_STAT_DD) == 0) { // 如果该标志位没有设置，则说明 overflow 了，返回错误
+    release(&e1000_lock);
+    return -1;
+  }
+
+  if (tx_mbufs[tx_idx] != 0) { // 如果有未释放的mbuf就释放
+    mbuffree(tx_mbufs[tx_idx]);
+  }
+  
+  // 填充 descriptor
+  tx_ring[tx_idx].addr = (uint64)m->head;
+  tx_ring[tx_idx].length = m->len;
+  tx_ring[tx_idx].cmd = E1000_TXD_CMD_EOP  | E1000_TXD_CMD_RS;
+  tx_mbufs[tx_idx] = m;
+
+  // 位置加一
+  regs[E1000_TDT] = (regs[E1000_TDT] + 1) % TX_RING_SIZE;
+
+  release(&e1000_lock);
+
   return 0;
 }
 
@@ -115,6 +137,24 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+  while (1) {
+    uint32 rx_idx = (regs[E1000_RDT] + 1 ) %  RX_RING_SIZE;
+
+    if ((rx_ring[rx_idx].status & E1000_RXD_STAT_DD) == 0) {
+      break;
+    }
+
+    rx_mbufs[rx_idx]->len = rx_ring[rx_idx].length;
+    net_rx(rx_mbufs[rx_idx]);
+    rx_mbufs[rx_idx] = mbufalloc(0);
+    
+    // 填充 descriptor
+    rx_ring[rx_idx].addr = (uint64)rx_mbufs[rx_idx]->head;
+    rx_ring[rx_idx].status = 0;
+
+    regs[E1000_RDT] = rx_idx;
+  }
+
 }
 
 void
