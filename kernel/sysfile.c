@@ -321,6 +321,27 @@ sys_open(void)
     end_op();
     return -1;
   }
+  if ((ip->type == T_SYMLINK) && ((omode & O_NOFOLLOW) == 0)) {
+    int cnt = 0;
+    char target[MAXPATH];
+    while (1) {
+      if (++cnt > 10) {
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
+      if (ip->type != T_SYMLINK) { // 如果不是 symlink 了九条出去
+        break;
+      }
+      readi(ip, 0, (uint64)target, 0, MAXPATH); // 从 ip 中读取数据(路径名)
+      iunlockput(ip);
+      if ((ip = namei(target)) == 0) { // 找不到文件
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+    }
+  }
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
@@ -344,6 +365,7 @@ sys_open(void)
   if((omode & O_TRUNC) && ip->type == T_FILE){
     itrunc(ip);
   }
+
 
   iunlock(ip);
   end_op();
@@ -482,5 +504,29 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64 sys_symlink(void) {
+  struct inode *ip;
+  char target[MAXPATH];
+  char path[MAXPATH];
+
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0) {
+    return -1;
+  }
+  begin_op();
+  
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+
+  if (writei(ip, 0, (uint64)target, 0, MAXPATH) < 0) { // 存储路径
+    end_op();
+    return -1;
+  }
+  iunlockput(ip);
+  end_op();
   return 0;
 }
