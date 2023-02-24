@@ -315,6 +315,16 @@ fork(void)
   np->state = RUNNABLE;
   release(&np->lock);
 
+  for (int i = 0; i < NVMA; i++) {
+    struct vma *vma = p->vmas + i;
+    if (vma->len) {
+      memmove(np->vmas + i, vma, sizeof(struct vma));
+      filedup(vma->f);
+    } else {
+      (np->vmas + i)->len = 0;
+    }
+  }
+
   return pid;
 }
 
@@ -343,6 +353,14 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  for (int i = 0; i < NVMA; i++) {
+    struct vma *vma = p->vmas + i;
+    if (vma->len) {
+      uvmunmap(p->pagetable, vma->addr, vma->len / PGSIZE, 0);
+      vma->len = 0;
+    }
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

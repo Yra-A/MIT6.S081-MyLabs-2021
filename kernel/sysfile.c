@@ -484,3 +484,171 @@ sys_pipe(void)
   }
   return 0;
 }
+
+struct vma *findvma(struct proc *p, uint64 va) {
+  for (int i = 0; i < NVMA; i++) {
+    struct vma *vma   = p->vmas + i;
+    if (vma->valid == 1 && vma->addr <= va && vma->addr + vma->len > va) { // va 在其所属范围内
+      return vma;
+    }
+  }
+  return 0;
+}
+
+int vmalazyload(uint64 va) {
+  struct proc *p = myproc();
+  struct vma *vma = findvma(p, va); // 找 va 所在的合法的 vma
+  if (vma == 0) {
+    return 0;
+  }
+
+  // 分配物理页
+  void *pa = kalloc();
+  if (pa == 0) {
+    panic("vmalazyload: kalloc");
+  }
+  memset(pa, 0, PGSIZE);
+
+  // 从文件中读取数据到 pa 里
+  struct inode *ip = vma->f->ip;
+  begin_op();
+  ilock(ip);
+  readi(ip, 0, (uint64)pa, vma->offset + va - vma->addr, PGSIZE);
+  iunlock(ip);
+  end_op();
+
+  //进行映射，先设置权限位
+  uint flags = PTE_U;
+  if (vma->prot & PROT_READ) {
+    flags |= PTE_R;
+  }
+  if (vma->prot & PROT_WRITE) {
+    flags |= PTE_W;
+  }
+  if (vma->prot & PROT_EXEC) {
+    flags |= PTE_X;
+  }
+
+  if (mappages(p->pagetable, va, PGSIZE, (uint64)pa, flags) < 0) {
+    panic("vmalazyload: mappages"); 
+  }
+
+  return 1;
+}
+
+int filewrite_offset(struct file *f, uint64 addr, int n, int offset) {
+  int r, ret = 0;
+
+  if (f->writable == 0)
+    return 0;
+
+  if (f->type == FD_INODE){
+    // write a few blocks at a time to avoid exceeding
+    // the maximum log transaction size, including
+    // i-node, indirect block, allocation blocks,
+    // and 2 blocks of slop for non-aligned writes.
+    // this really belongs lower down, since writei()
+    // might be writing a device like the console.
+    int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
+    int i = 0;
+    while(i < n){
+      int n1 = n - i;
+      if(n1 > max)
+        n1 = max;
+
+      begin_op();
+      ilock(f->ip);
+      if ((r = writei(f->ip, 1, addr + i, offset, n1)) > 0)
+        offset += r;
+      iunlock(f->ip);
+      end_op();
+
+      if(r != n1) {
+        // error from writei
+        break;
+      }
+      i += r;
+    }
+    ret = (i == n ? n : -1);
+  } else {
+    panic("filewrite");
+  }
+
+  return ret;
+}
+
+uint64
+sys_mmap(void) {
+  int len, prot, flags, fd;
+  struct file *f;
+
+  if (argint(1, &len) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, &fd, &f) < 0) { // 获取参数
+    return -1;
+  }
+
+  if ((!f->readable && (prot & PROT_READ)) || ((flags & MAP_SHARED) && (!f->writable && (prot & PROT_WRITE)))) { // 共享文件要检查权限位一致
+    return -1;
+  }
+
+  struct proc *p = myproc();
+  struct vma *vma = p->vmas;
+
+  for (int i = 0; i < NVMA; i++) {
+    if (vma[i].valid == 0) { // 找到一个空闲的 VMA
+      vma[i].valid = 1;
+      vma[i].len = PGROUNDUP(len); // page-aligned
+      p->sz += vma[i].len;
+      vma[i].flags = flags;
+      vma[i].prot = prot;
+      vma[i].f = filedup(f);
+      return vma[i].addr;
+    }
+  }
+  return -1;
+}
+
+uint64
+sys_munmap(void) {
+  uint64 addr;
+  int len;
+
+  if (argaddr(0, &addr) < 0 || argint(1, &len) < 0) {
+    return -1;
+  }
+
+  struct proc *p = myproc();
+  struct vma *vma = findvma(p, addr);
+  if (vma == 0) {
+    return -1;
+  }
+
+  uint64 va = (uint64)addr;
+  len += va - PGROUNDDOWN(va);
+  va = PGROUNDDOWN(va); // page-aligned
+  int offset = vma->offset;
+  int flag = 0; // 记录是否要关闭文件
+  if (addr == vma->addr && len == vma->len) { // 全部释放
+      vma->len = 0;
+      flag = 1;
+  } else {
+    vma->len -= len;
+    if (va == vma->addr) { // 从头释放
+      vma->addr += len;
+    }
+  }
+
+  if (vma->flags & MAP_SHARED) {
+    if (filewrite_offset(vma->f, va, len, offset) == 0) {
+      return -1;
+    }
+  }
+
+  if (walkaddr(p->pagetable, va) != 0) { // 如果映射了
+    uvmunmap(p->pagetable, va, len / PGSIZE, 0);
+  }
+  if (flag) {
+    fileclose(vma->f);
+  }
+
+  return 0;
+} 

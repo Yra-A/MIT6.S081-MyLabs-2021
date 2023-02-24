@@ -184,3 +184,7 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+// sysfile.c
+int             vmalazyload(uint64 va);
+struct vma *    findvma(struct proc *p, uint64 va);
